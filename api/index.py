@@ -4,6 +4,11 @@ from flask_cors import CORS
 import pandas as pd
 import os
 from dependencies.vanna import VannaDefault
+from vanna.ollama import Ollama
+from vanna.chromadb import ChromaDB_VectorStore
+import psycopg2
+import pandas as pd
+
 import sys
 
 load_dotenv()
@@ -11,18 +16,43 @@ app = Flask(__name__, static_url_path="")
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # VANNA INITIALIZATION
-vannakey = os.environ.get("VANNA_API_KEY")
-account = os.environ.get("SNOWFLAKE_ACCOUNT")
-username = os.environ.get("SNOWFLAKE_USERNAME")
-password = os.environ.get("SNOWFLAKE_PASSWORD")
-database = os.environ.get("SNOWFLAKE_DATABASE")
-role = os.environ.get("SNOWFLAKE_ROLE")
-model = os.environ.get("VANNA_MODEL")
-vn = VannaDefault(model=model, api_key=vannakey)
-vn.connect_to_snowflake(
-    account=account, username=username, password=password, database=database, role=role
-)
+# vannakey = os.environ.get("VANNA_API_KEY")
+# account = os.environ.get("SNOWFLAKE_ACCOUNT")
+# username = os.environ.get("SNOWFLAKE_USERNAME")
+# password = os.environ.get("SNOWFLAKE_PASSWORD")
+# database = os.environ.get("SNOWFLAKE_DATABASE")
+# role = os.environ.get("SNOWFLAKE_ROLE")
+# model = os.environ.get("VANNA_MODEL")
+# vn = VannaDefault(model=model, api_key=vannakey)
+# vn.connect_to_snowflake(
+#     account=account, username=username, password=password, database=database, role=role
+# )
 
+class MyVanna(ChromaDB_VectorStore, Ollama):
+    def __init__(self, config=None):
+        ChromaDB_VectorStore.__init__(self, config=config)
+        Ollama.__init__(self, config=config)
+
+vn = MyVanna(config={'model': 'llama3.2-vision'})
+vn.connect_to_postgres(host='10.10.10.168', dbname='postgres', user='admin', password='admin', port='5432')
+
+def run_sql(sql: str) -> pd.DataFrame:
+    with psycopg2.connect(
+        host='10.10.10.168',
+        database='postgres',
+        user='admin',
+        password='admin',
+        port='5432'
+    ) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            result = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            df = pd.DataFrame(result, columns=columns)
+            return df
+vn.run_sql = run_sql
+vn.run_sql_is_set = True
+database = "postgres"
 
 @app.route("/api/v1/generate_questions", methods=["GET"])
 def generate_questions():
